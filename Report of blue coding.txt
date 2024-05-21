@@ -1,0 +1,174 @@
+Regarding the code I found some bugs and some improvements to implement.
+
+This is the report format I created for the challenge.
+_________________________________________________________________________________________________________________________________________________________________-
+Defect Report
+
+-------- 1. Defect Name: Redis Connection Resource Leak
+- Expected Behavior: 
+  - The Redis connection should be properly closed and disposed of before reconnecting to avoid wasting resources and ensure the application runs efficiently.
+- Actual Behavior: 
+  - The application did not close the old Redis connection before reconnecting, leading to potential resource wastage and inefficiency.
+- Actual Parameters and Data Used for the Test:
+  - Redis hostname: redis
+  - Redis port: 6379
+- Type of Broken Requirement:
+  - Non-functional (Resource Management)
+
+-------- 2. Defect Name: Inconsistent Database Keep-Alive Checks
+- Expected Behavior: 
+  - The application should regularly check the database connection by running a keep-alive command to ensure it stays connected.
+- Actual Behavior: 
+  - The keep-alive command was only run when there were no votes to process, which could lead to the database connection dropping unexpectedly.
+- Actual Parameters and Data Used for the Test:
+  - Database hostname: db
+  - Database port: 5432
+  - Keep-alive interval: 1 minute
+- Type of Broken Requirement:
+  - Non-functional (Reliability)
+
+-------- 3. Defect Name: Incorrect Parameter Handling in UpdateVote
+- Expected Behavior: 
+  - The SQL command should correctly set and reuse parameters to ensure it works every time.
+- Actual Behavior: 
+  - Parameters were not properly reused or recreated for the SQL update command, causing potential failures when trying to update the database.
+- Actual Parameters and Data Used for the Test:
+  - Voter ID: Various strings
+  - Vote: Various strings
+- Type of Broken Requirement:
+  - Functional
+
+-------- 4. Defect Name: Hardcoded Configuration Strings
+- Expected Behavior: 
+  - Configuration strings such as database connection details should be handled using environment variables or configuration files to make the application more flexible and secure.
+- Actual Behavior: 
+  - The application used hardcoded connection strings, making it less adaptable and potentially insecure.
+- Actual Parameters and Data Used for the Test:
+  - Connection strings: Server=db;Username=postgres;Password=postgres;
+- Type of Broken Requirement:
+  - Non-functional (Configuration Management)
+
+-------- 5. Defect Name: Unnecessary Random ID Generation
+- Expected Behavior: 
+  - The application should only generate and use meaningful identifiers that are relevant to its purpose.
+- Actual Behavior: 
+  - A random ID (anotherId) was generated and used without a clear purpose, adding unnecessary complexity to the application.
+- Actual Parameters and Data Used for the Test:
+  - Random ID: Hexadecimal string generated from a random number
+- Type of Broken Requirement:
+  - Functional
+
+-------- 6. Defect Name: Blocking Calls in UpdateVote
+- Expected Behavior: 
+  - The application should avoid using commands that cause it to pause, to keep it responsive and fast.
+- Actual Behavior: 
+  - The `Thread.Sleep(5000)` call in the `UpdateVote` method caused the application to pause for 5 seconds, slowing down its performance.
+- Actual Parameters and Data Used for the Test:
+  - Sleep duration: 5000 milliseconds (5 seconds)
+- Type of Broken Requirement:
+  - Non-functional (Performance)
+
+
+
+Summary of Changes
+
+-------- 1. Dispose Old Redis Connection:
+- Change: Added `redisConn?.Dispose();` before reconnecting to Redis.
+- Impact: Prevents wasting resources by properly closing old Redis connections.
+
+-------- 2. Consistent Keep-Alive Checks:
+- Change: Added a `Timer` to run the keep-alive command every minute.
+- Impact: Ensures the database connection stays active and reliable.
+
+-------- 3. Parameter Reuse in `UpdateVote`:
+- Change: Cleared and re-added parameters for the SQL update command.
+- Impact: Fixes issues with parameter handling, making sure the command works correctly.
+
+-------- 4. Configuration Handling:
+- Change: Suggested using environment variables or configuration files (not yet implemented).
+- Impact: Would make the application more flexible and secure by not hardcoding sensitive information.
+
+-------- 5. Remove Random ID Generation:
+- Change: Removed the random ID generation (`anotherId`).
+- Impact: Simplifies the code by removing unnecessary steps.
+
+-------- 6. Avoid Blocking Calls:
+- Change: Removed the `Thread.Sleep(5000)` from the `UpdateVote` method.
+- Impact: Keeps the application responsive and fast by avoiding unnecessary pauses.
+_________________________________________________________________________________________________________________________________________________________________-
+With respect to what is monitoring within docker this cost me a lot because I'm not very familiar with the tool apart from its basic functions 
+for this I relied on question forums and was deducing as I was making.
+
+
+To ensuring Performance Requirements i	 generate this script 
+
+
+
+
+//Cast a vote
+curl -X POST http://localhost:6000/vote -d '{"vote":"candidate_a","voter_id":"123"}' -H "Content-Type: application/json"
+
+// Check if the vote was cast in less than 3 seconds
+start=$(date +%s)
+curl -s -X POST http://localhost:6000/vote -d '{"vote":"candidate_a","voter_id":"123"}' -H "Content-Type: application/json"
+end=$(date +%s)
+runtime=$((end-start))
+
+if [ $runtime -gt 3 ]; then
+  echo "Vote casting took more than 3 seconds"
+else
+  echo "Vote casting took less than 3 seconds"
+fi
+
+//Load voting results and measure the time taken
+start=$(date +%s)
+curl -s http://localhost:5001/results
+end=$(date +%s)
+runtime=$((end-start))
+
+if [ $runtime -gt 20 ]; then
+  echo "Loading results took more than 20 seconds"
+else
+  echo "Loading results took less than 20 seconds"
+fi
+
+
+2. Run Parallel Scripts:
+Simulate multiple clients by running several instances of the vote-casting script in parallel
+
+
+
+
+docker-compose up -d --build
+
+// Wait for services to be fully up
+sleep 30
+
+// Run the load tests
+wrk -t12 -c400 -d30s http://localhost:6000/vote &
+wrk -t12 -c400 -d30s http://localhost:5001/results &
+
+
+docker stats &
+
+wait
+
+
+docker stats
+docker-compose down
+
+This Scripts builds and starts Docker containers.
+Waits for services to start.
+Runs load tests for voting and results endpoints.
+Monitors resource usage.
+Stops and removes Docker containers after the test.
+
+
+
+
+
+
+
+
+
+
